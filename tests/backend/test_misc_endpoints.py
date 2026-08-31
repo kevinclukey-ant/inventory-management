@@ -65,6 +65,18 @@ class TestDemandEndpoints:
                 assert percent_change < 2.0, \
                     f"Item {item['item_name']} has {percent_change:.2f}% change, expected < 2%"
 
+    def test_demand_forecast_skus_join_to_inventory(self, client):
+        """Test that most forecast SKUs exist in inventory.
+
+        The Restocking view joins forecasts to inventory by SKU to get unit cost
+        and stock on hand, so the forecast data must reference real SKUs.
+        """
+        forecast_skus = {item["item_sku"] for item in client.get("/api/demand").json()}
+        inventory_skus = {item["sku"] for item in client.get("/api/inventory").json()}
+
+        joined = forecast_skus & inventory_skus
+        assert len(joined) >= 5, f"Expected at least 5 forecast SKUs in inventory, found {len(joined)}"
+
     def test_demand_forecast_has_new_items(self, client):
         """Test that new demand forecast items exist."""
         response = client.get("/api/demand")

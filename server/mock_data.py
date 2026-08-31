@@ -37,3 +37,8 @@ purchase_orders = load_json_file('purchase_orders.json')
 
 # All data is now loaded from JSON files in the data/ directory
 # This allows for easier maintenance and updates of the sample data
+
+# Restock orders are created at runtime via POST /api/restock-orders and live
+# in memory only (reset on server restart). Kept separate from `orders` so the
+# dashboard KPIs and reports, which aggregate `orders`, are unaffected.
+restock_orders = []

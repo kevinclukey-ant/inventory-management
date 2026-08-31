@@ -1,8 +1,9 @@
+from datetime import datetime, timedelta
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from typing import List, Optional
-from pydantic import BaseModel
-from mock_data import inventory_items, orders, demand_forecasts, backlog_items, spending_summary, monthly_spending, category_spending, recent_transactions, purchase_orders
+from pydantic import BaseModel, Field
+from mock_data import inventory_items, orders, demand_forecasts, backlog_items, spending_summary, monthly_spending, category_spending, recent_transactions, purchase_orders, restock_orders
 
 app = FastAPI(title="Factory Inventory Management System")
 
@@ -13,6 +14,17 @@ QUARTER_MAP = {
     'Q3-2025': ['2025-07', '2025-08', '2025-09'],
     'Q4-2025': ['2025-10', '2025-11', '2025-12']
 }
+
+# Fixed supplier lead times per category (days) used to compute expected delivery
+# for restock orders. Unknown categories fall back to DEFAULT_LEAD_TIME_DAYS.
+RESTOCK_LEAD_TIME_DAYS = {
+    'Circuit Boards': 14,
+    'Sensors': 10,
+    'Actuators': 21,
+    'Controllers': 18,
+    'Power Supplies': 12,
+}
+DEFAULT_LEAD_TIME_DAYS = 14
 
 def filter_by_month(items: list, month: Optional[str]) -> list:
     """Filter items by month/quarter based on order_date field"""
@@ -120,6 +132,37 @@ class CreatePurchaseOrderRequest(BaseModel):
     expected_delivery_date: str
     notes: Optional[str] = None
 
+class RestockOrderItemRequest(BaseModel):
+    sku: str
+    # gt=0 makes Pydantic reject zero/negative quantities with a 422 before the handler runs
+    quantity: int = Field(gt=0)
+
+class CreateRestockOrderRequest(BaseModel):
+    budget: float = Field(ge=0)
+    items: List[RestockOrderItemRequest]
+
+class RestockOrderItem(BaseModel):
+    sku: str
+    name: str
+    category: str
+    warehouse: str
+    quantity: int
+    unit_price: float
+    line_total: float
+    lead_time_days: int
+    expected_delivery: str
+
+class RestockOrder(BaseModel):
+    id: str
+    order_number: str
+    status: str
+    order_date: str
+    expected_delivery: str
+    lead_time_days: int
+    budget: float
+    total_value: float
+    items: List[RestockOrderItem]
+
 # API endpoints
 @app.get("/")
 def root():
@@ -178,6 +221,66 @@ def get_backlog():
         item_dict["has_purchase_order"] = has_po
         result.append(item_dict)
     return result
+
+@app.get("/api/restock-orders", response_model=List[RestockOrder])
+def get_restock_orders():
+    """Get all restock orders submitted during this server session (no filters)"""
+    return restock_orders
+
+@app.post("/api/restock-orders", response_model=RestockOrder, status_code=201)
+def create_restock_order(request: CreateRestockOrderRequest):
+    """Create a restock order. Prices and item metadata come from inventory, not the client."""
+    if not request.items:
+        raise HTTPException(status_code=400, detail="Restock order must contain at least one item")
+
+    # Drop microseconds so order_date matches the "YYYY-MM-DDTHH:MM:SS" format
+    # used by the existing orders.json records
+    now = datetime.now().replace(microsecond=0)
+
+    line_items = []
+    for line in request.items:
+        inv = next((item for item in inventory_items if item["sku"] == line.sku), None)
+        if not inv:
+            raise HTTPException(status_code=400, detail=f"Unknown SKU: {line.sku}")
+        lead = RESTOCK_LEAD_TIME_DAYS.get(inv["category"], DEFAULT_LEAD_TIME_DAYS)
+        line_items.append({
+            "sku": inv["sku"],
+            "name": inv["name"],
+            "category": inv["category"],
+            "warehouse": inv["warehouse"],
+            "quantity": line.quantity,
+            "unit_price": inv["unit_cost"],
+            "line_total": round(line.quantity * inv["unit_cost"], 2),
+            "lead_time_days": lead,
+            "expected_delivery": (now + timedelta(days=lead)).isoformat(),
+        })
+
+    total_value = round(sum(li["line_total"] for li in line_items), 2)
+    # Half-cent tolerance so an order that exactly matches the budget after
+    # rounding is not rejected by floating-point noise
+    if total_value > request.budget + 0.005:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Order total {total_value:.2f} exceeds budget {request.budget:.2f}",
+        )
+
+    # The order as a whole is only complete when its slowest line arrives
+    max_lead = max(li["lead_time_days"] for li in line_items)
+    # Sequence is derived from list length, so it restarts when the in-memory list resets
+    seq = len(restock_orders) + 1
+    order = {
+        "id": f"rst-{seq}",
+        "order_number": f"RST-{now.year}-{seq:04d}",
+        "status": "Submitted",
+        "order_date": now.isoformat(),
+        "expected_delivery": (now + timedelta(days=max_lead)).isoformat(),
+        "lead_time_days": max_lead,
+        "budget": request.budget,
+        "total_value": total_value,
+        "items": line_items,
+    }
+    restock_orders.append(order)
+    return order
 
 @app.get("/api/dashboard/summary")
 def get_dashboard_summary(
