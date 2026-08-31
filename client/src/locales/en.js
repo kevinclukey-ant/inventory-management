@@ -6,6 +6,7 @@ export default {
     orders: 'Orders',
     finance: 'Finance',
     demandForecast: 'Demand Forecast',
+    restocking: 'Restocking',
     companyName: 'Catalyst Components',
     subtitle: 'Inventory Management System'
   },
@@ -126,6 +127,12 @@ export default {
       status: 'Status',
       expectedDelivery: 'Expected Delivery',
       actualDelivery: 'Actual Delivery'
+    },
+    submittedOrders: {
+      title: 'Submitted Orders',
+      noOrders: 'No restock orders submitted yet',
+      leadTime: 'Lead Time',
+      days: '{count} days'
     }
   },
 
@@ -188,6 +195,37 @@ export default {
     }
   },
 
+  // Restocking
+  restocking: {
+    title: 'Restocking',
+    description: 'Recommend restock purchases from demand forecasts within a budget',
+    budget: 'Available Budget',
+    budgetNote: 'Budget and unit costs are in USD; JPY values are shown at a fixed rate',
+    allocated: 'Allocated',
+    remaining: 'Remaining',
+    recommendations: 'Recommended Items',
+    noRecommendations: 'No items need restocking for the selected filters',
+    placeOrder: 'Place Order',
+    placingOrder: 'Placing order...',
+    orderPlaced: 'Order {orderNumber} placed. Expected delivery {date}.',
+    orderFailed: 'Failed to place order',
+    viewOrders: 'View in Orders',
+    overBudget: 'Allocated total exceeds budget',
+    table: {
+      sku: 'SKU',
+      itemName: 'Item Name',
+      category: 'Category',
+      warehouse: 'Warehouse',
+      trend: 'Trend',
+      onHand: 'On Hand',
+      forecast: 'Forecast',
+      gap: 'Gap',
+      unitCost: 'Unit Cost',
+      quantity: 'Order Qty',
+      lineTotal: 'Line Total'
+    }
+  },
+
   // Filters
   filters: {
     timePeriod: 'Time Period',
@@ -204,6 +242,7 @@ export default {
     shipped: 'Shipped',
     processing: 'Processing',
     backordered: 'Backordered',
+    submitted: 'Submitted',
     inStock: 'In Stock',
     lowStock: 'Low Stock',
     adequate: 'Adequate'
